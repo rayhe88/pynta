@@ -34,6 +34,7 @@ import signal
 from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
+from pynta.mapcommand import MapTaskToNodes
 
 class OptimizationTask(FiretaskBase):
     def run_task(self, fw_spec):
@@ -60,6 +61,10 @@ def optimize_firework(xyz,software,label,opt_method=None,sella=None,socket=False
                       run_kwargs={},constraints=[],parents=[],out_path=None,time_limit_hrs=np.inf,fmaxhard=0.0,ignore_errors=False,
                       target_site_num=None,metal=None,facet=None,priority=1):
     d = {"xyz" : xyz, "software" : software,"label" : label}
+    if software is "Espresso":
+        node = MapTaskToNodes()
+        newcommand = node.getCommand()
+        sofware_kwargs["command"] = newcommand
     if opt_method: d["opt_method"] = opt_method
     if software_kwargs: d["software_kwargs"] = software_kwargs
     if opt_kwargs: d["opt_kwargs"] = opt_kwargs
@@ -312,6 +317,10 @@ class MolecularOptimizationFailTask(OptimizationTask):
 
 def energy_firework(xyz,software,label,software_kwargs={},parents=[],out_path=None,ignore_errors=False):
     d = {"xyz" : xyz, "software" : software, "label" : label}
+    if software is "Espresso":
+        node = MapTaskToNodes()
+        newcommand = node.getCommand()
+        sofware_kwargs["command"] = newcommand
     if software_kwargs: d["software_kwargs"] = software_kwargs
     d["ignore_errors"] = ignore_errors
     t1 = MolecularEnergyTask(d)
@@ -348,6 +357,10 @@ class MolecularEnergyTask(EnergyTask):
 
 def vibrations_firework(xyz,software,label,software_kwargs={},parents=[],out_path=None,constraints=[],socket=False,ignore_errors=False):
     d = {"xyz" : xyz, "software" : software, "label" : label, "socket": socket}
+    if software is "Espresso":
+        node = MapTaskToNodes()
+        newcommand = node.getCommand()
+        sofware_kwargs["command"] = newcommand
     if software_kwargs: d["software_kwargs"] = software_kwargs
     if constraints: d["constraints"] = constraints
     d["ignore_errors"] = ignore_errors
