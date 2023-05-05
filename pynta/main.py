@@ -144,7 +144,7 @@ class Pynta:
     def analyze_slab(self):
         full_slab = self.slab
         cas = SlabAdsorptionSites(full_slab, self.surface_type,allow_6fold=False,composition_effect=False,
-                        label_sites=True,
+                        label_sites=True, tol=1.0,
                         surrogate_metal=self.metal)
 
         self.cas = cas
@@ -517,12 +517,15 @@ class Pynta:
     def execute_from_initial_ad_guesses(self):
         if self.slab_path is None: #handle slab
             self.generate_slab()
-
+        print("analyze slab")
         self.analyze_slab()
+        print("generate mol")
         self.generate_mol_dict()
+        print("generate_initial_adsorbate_guesses")
         self.generate_initial_adsorbate_guesses(skip_structs=True)
 
         #adsorbate optimization
+        print("Set up  adsorbates")
         self.setup_adsorbates(initial_guess_finished=True)
 
         #setup transition states

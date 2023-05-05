@@ -627,7 +627,7 @@ def get_bond_lengths_sites(mol,ads,atom_map,surf_atom_map,nslab,facet="fcc111",m
 
     if cas is None:
         cas = SlabAdsorptionSites(ads,facet,allow_6fold=False,composition_effect=False,
-                            label_sites=True,
+                            label_sites=True, Tol= 1.0,
                             surrogate_metal=metal)
     adcov = SlabAdsorbateCoverage(ads,adsorption_sites=cas)
     occ = adcov.get_sites(occupied_only=True)
