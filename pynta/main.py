@@ -2,6 +2,7 @@ from pynta.tasks import *
 from pynta.mol import get_adsorbate, generate_unique_site_additions, generate_adsorbate_guesses, get_name
 from molecule.molecule import Molecule
 import ase.build
+from ase.build import fcc111, bcc111
 from ase.io import read, write
 from ase import Atoms, Atom
 from acat.adsorption_sites import SlabAdsorptionSites
@@ -21,6 +22,17 @@ from fireworks.core.rocket_launcher import rapidfire
 from fireworks.core.fworker import FWorker
 import fireworks.fw_config
 import logging
+import time
+import pickle
+
+def myprintAtoms(molecule):
+    print(molecule)
+    print("molecule Positions")
+    print(molecule.get_positions())
+    print("molecule cell")
+    print(molecule.get_cell())
+    print("molecule symbols")
+    print(molecule.get_chemical_symbols())
 
 class Pynta:
     def __init__(self,path,rxns_file,surface_type,metal,label,launchpad_path=None,fworker_path=None,
@@ -35,9 +47,10 @@ class Pynta:
         TS_opt_software_kwargs=None,
         lattice_opt_software_kwargs={'kpts': (25,25,25), 'ecutwfc': 70, 'degauss':0.02, 'mixing_mode': 'plain'},
         reset_launchpad=False,queue_adapter_path=None,num_jobs=25,max_num_hfsp_opts=None,#max_num_hfsp_opts is mostly for fast testing
-        Eharmtol=3.0,Eharmfiltertol=30.0,Ntsmin=5,frozen_layers=2):
+        Eharmtol=3.0,Eharmfiltertol=30.0,Ntsmin=5,frozen_layers=2,pickled=0):
 
         self.surface_type = surface_type
+        self.pickled = pickled
         if launchpad_path:
             launchpad = LaunchPad.from_file(launchpad_path)
         else:
@@ -142,29 +155,57 @@ class Pynta:
             write(self.slab_path,slab)
 
     def analyze_slab(self):
-        full_slab = self.slab
-        cas = SlabAdsorptionSites(full_slab, self.surface_type,allow_6fold=False,composition_effect=False,
-                        label_sites=True, tol=1.0,
-                        surrogate_metal=self.metal)
+        if self.pickled == 0 :
+            full_slab = self.slab
+            cas = SlabAdsorptionSites(full_slab, self.surface_type,allow_6fold=False,composition_effect=False,
+                            label_sites=True, tol=0.75,
+                            surrogate_metal=self.metal)
 
-        self.cas = cas
+            self.cas = cas
+            tinicio = time.time() #RHE
+            single_geoms,single_site_bond_params_lists,single_sites_lists = generate_unique_site_additions(full_slab,cas,len(full_slab),site_bond_params_list=[],sites_list=[])
+            tfinal = time.time() #RHE
+            print("Time generate_unique_site:", tfinal-tinicio) # RHE
 
-        single_geoms,single_site_bond_params_lists,single_sites_lists = generate_unique_site_additions(full_slab,cas,len(full_slab),site_bond_params_list=[],sites_list=[])
+            double_geoms_full = []
+            double_site_bond_params_lists_full = []
+            double_sites_lists_full = []
+            for i in range(len(single_geoms)):
+                double_geoms,double_site_bond_params_lists,double_sites_lists = generate_unique_site_additions(single_geoms[i],
+                                                                    cas,len(full_slab),single_site_bond_params_lists[i],single_sites_lists[i])
+                double_geoms_full.extend(double_geoms)
+                double_site_bond_params_lists_full.extend(double_site_bond_params_lists)
+                double_sites_lists_full.extend(double_sites_lists)
+            self.single_site_bond_params_lists = single_site_bond_params_lists
+            self.single_sites_lists = single_sites_lists
+            self.double_site_bond_params_lists = double_site_bond_params_lists_full
+            self.double_sites_lists = double_sites_lists_full
 
-        double_geoms_full = []
-        double_site_bond_params_lists_full = []
-        double_sites_lists_full = []
-        for i in range(len(single_geoms)):
-            double_geoms,double_site_bond_params_lists,double_sites_lists = generate_unique_site_additions(single_geoms[i],
-                                                                cas,len(full_slab),single_site_bond_params_lists[i],single_sites_lists[i])
-            double_geoms_full.extend(double_geoms)
-            double_site_bond_params_lists_full.extend(double_site_bond_params_lists)
-            double_sites_lists_full.extend(double_sites_lists)
+            my_dictionary_to_pickled  = {'cas' : cas,
+                                        'single_site_bond_params_list': single_site_bond_params_lists,
+                                        'single_sites_lists': single_sites_lists,
+                                        'double_site_bond_params_lists': double_site_bond_params_lists_full,
+                                        'double_sites_lists_full': double_sites_lists_full}
 
-        self.single_site_bond_params_lists = single_site_bond_params_lists
-        self.single_sites_lists = single_sites_lists
-        self.double_site_bond_params_lists = double_site_bond_params_lists_full
-        self.double_sites_lists = double_sites_lists_full
+            print("Save as a pickle")
+            with open('analize_slab.pickle', 'wb') as myfile:
+                pickle.dump(my_dictionary_to_pickled, myfile)
+
+
+        else :
+            with open('analize_slab.pickle', 'rb') as myfile:
+                my_dict = pickle.load(myfile)
+
+            print("Load from a pickle")
+
+            self.cas = my_dict['cas']
+            self.single_site_bond_params_lists = my_dict['single_site_bond_params_list']
+            self.single_sites_lists = my_dict['single_sites_lists']
+            self.double_site_bond_params_lists = my_dict['double_site_bond_params_lists']
+            self.double_sites_lists = my_dict['double_sites_lists_full']
+
+
+
 
     def generate_mol_dict(self):
         """
@@ -364,7 +405,7 @@ class Pynta:
                     optfws.append(fwopt2)
                     optfws2.append(fwopt2)
 
-                vib_obj_dict = {"software": self.software, "label": adsname, "software_kwargs": software_kwargs,
+                vib_obj_dict = {"software": self.software, "label": adsname, "software_kwargs": self.software_kwargs, #RHE
                     "constraints": ["freeze all "+self.metal]}
 
                 cfw = collect_firework(xyzs,True,["vibrations_firework"],[vib_obj_dict],["vib.json"],[],parents=optfws2,label=adsname)
@@ -529,6 +570,7 @@ class Pynta:
         self.setup_adsorbates(initial_guess_finished=True)
 
         #setup transition states
+        print("Set up transition states")
         self.setup_transition_states()
 
         wf = Workflow(self.fws, name=self.label)
