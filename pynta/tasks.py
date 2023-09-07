@@ -57,6 +57,7 @@ class DoNothingTask(FiretaskBase):
     def run_task(self, fw_spec):
         return FWAction()
 
+@explicit_serialize #RHE
 def optimize_firework(xyz,software,label,opt_method=None,sella=None,socket=False,order=0,software_kwargs={},opt_kwargs={},
                       run_kwargs={},constraints=[],parents=[],out_path=None,time_limit_hrs=np.inf,fmaxhard=0.0,ignore_errors=False,
                       target_site_num=None,metal=None,facet=None,priority=1):
@@ -66,7 +67,9 @@ def optimize_firework(xyz,software,label,opt_method=None,sella=None,socket=False
         newcommand = node.getCommand()
         software_kwargs["command"] = newcommand
     else:
-        software_kwargs["fake"] = "Fake Command OPT"
+        node = MapTaskToNodes(opt_method) # RHE delete after
+        newcommand = node.getCommand() # RHE Delete after
+        software_kwargs["fake"] = newcommand
     if opt_method: d["opt_method"] = opt_method
     if software_kwargs: d["software_kwargs"] = software_kwargs
     if opt_kwargs: d["opt_kwargs"] = opt_kwargs
@@ -317,6 +320,7 @@ class MolecularOptimizationFailTask(OptimizationTask):
 
         return FWAction()
 
+@explicit_serialize #RHE
 def energy_firework(xyz,software,label,software_kwargs={},parents=[],out_path=None,ignore_errors=False):
     d = {"xyz" : xyz, "software" : software, "label" : label}
     if software == "Espresso":
@@ -324,7 +328,9 @@ def energy_firework(xyz,software,label,software_kwargs={},parents=[],out_path=No
         newcommand = node.getCommand()
         software_kwargs["command"] = newcommand
     else:
-        software_kwargs["fake"] = "Fake Command ENE"
+        node = MapTaskToNodes() # RHE delete after
+        newcommand = node.getCommand() # RHE Delete after
+        software_kwargs["fake"] = newcommand
     if software_kwargs: d["software_kwargs"] = software_kwargs
     d["ignore_errors"] = ignore_errors
     t1 = MolecularEnergyTask(d)
@@ -359,6 +365,7 @@ class MolecularEnergyTask(EnergyTask):
 
         return FWAction()
 
+@explicit_serialize #RHE
 def vibrations_firework(xyz,software,label,software_kwargs={},parents=[],out_path=None,constraints=[],socket=False,ignore_errors=False):
     d = {"xyz" : xyz, "software" : software, "label" : label, "socket": socket}
     if software == "Espresso":
@@ -366,7 +373,9 @@ def vibrations_firework(xyz,software,label,software_kwargs={},parents=[],out_pat
         newcommand = node.getCommand()
         software_kwargs["command"] = newcommand
     else:
-        software_kwargs["fake"] = "Fake Command VIB"
+        node = MapTaskToNodes() # RHE delete after
+        newcommand = node.getCommand() # RHE Delete after
+        software_kwargs["fake"] = newcommand
     if software_kwargs: d["software_kwargs"] = software_kwargs
     if constraints: d["constraints"] = constraints
     d["ignore_errors"] = ignore_errors
@@ -393,6 +402,7 @@ class MolecularVibrationsTask(VibrationTask):
         label = self["label"]
         software_kwargs = deepcopy(self["software_kwargs"]) if "software_kwargs" in self.keys() else dict()
         software = name_to_ase_software(self["software"])(**software_kwargs)
+
         ignore_errors = deepcopy(self["ignore_errors"]) if "ignore_errors" in self.keys() else False
         socket = self["socket"] if "socket" in self.keys() else False
         if socket:
@@ -707,6 +717,7 @@ class MolecularTSNudge(FiretaskBase):
         else:
             return FWAction()
 
+@explicit_serialize #RHE
 def IRC_firework(xyz,label,out_path=None,spawn_jobs=False,software=None,
         socket=False,software_kwargs={},opt_kwargs={},run_kwargs={},constraints=[],parents=[],ignore_errors=False,forward=True):
         if software == "Espresso":
@@ -714,7 +725,9 @@ def IRC_firework(xyz,label,out_path=None,spawn_jobs=False,software=None,
             newcommand = node.getCommand()
             software_kwargs["command"] = newcommand
         else:
-            software_kwargs["fake"] = "Fake Command IRC"
+            node = MapTaskToNodes() # RHE delete after
+            newcommand = node.getCommand() # RHE Delete after
+            software_kwargs["fake"] = newcommand
         if out_path is None: out_path = os.path.join(directory,label+"_irc.traj")
         t1 = MolecularIRC(xyz=xyz,label=label,software=software,
             socket=socket,software_kwargs=software_kwargs,opt_kwargs=opt_kwargs,run_kwargs=run_kwargs,
