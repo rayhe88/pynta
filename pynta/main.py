@@ -9,6 +9,7 @@ from acat.adsorption_sites import SlabAdsorptionSites
 from acat.adsorbate_coverage import SlabAdsorbateCoverage
 from acat.settings import site_heights, adsorbate_molecule
 import os
+import shutil
 import time
 import yaml
 from copy import deepcopy
@@ -24,6 +25,9 @@ import fireworks.fw_config
 import logging
 import time
 import pickle
+from pynta.mapcommand import MapTaskToNodes
+from pynta.utils import copyDataAndSave
+import json
 
 def myprintAtoms(molecule):
     print(molecule)
@@ -515,9 +519,9 @@ class Pynta:
         if self.queue:
             rapidfirequeue(self.launchpad,self.fworker,self.qadapter,njobs_queue=self.njobs_queue,nlaunches="infinite")
         elif not self.queue and self.num_jobs == 1:
-            rapidfire(self.launchpad,self.fworker,nlaunches="infinite")
+            rapidfire(self.launchpad,self.fworker,nlaunches=0)
         else:
-            launch_multiprocess(self.launchpad,self.fworker,"INFO","infinite",self.num_jobs,5)
+            launch_multiprocess(self.launchpad,self.fworker,"INFO",0,self.num_jobs,5, local_redirect=True)
 
     def execute(self,generate_initial_ad_guesses=True,calculate_adsorbates=True,
                 calculate_transition_states=True,launch=True):
@@ -553,6 +557,83 @@ class Pynta:
 
         if launch:
             self.launch()
+
+
+    def reset(self):
+        # Get the information of the workflow
+        wf1 = self.launchpad.get_wf_summary_dict(1, mode='more')
+
+        # Save the states of the workflow
+        wf_states = wf1['states']
+
+        # Save the launcher directories
+        wf_launchers = wf1['launch_dirs']
+
+        # In this bucle-for the task that are not completed, change the status
+        # We need the number of the task (id)
+        for task_name, task_state in wf_states.items():
+            if task_state != 'COMPLETED':
+                # Here we want to change the map - node
+                task_id = task_name.split('--')[-1]
+                d = self.launchpad.get_fw_dict_by_id(int(task_id))
+                newdict = deepcopy(d['spec'])
+
+                nameTask = d['spec']['_tasks'][0]['_fw_name']
+
+                nameTasks = ['{{pynta.tasks.MolecularOptimizationTask}}',
+                            '{{pynta.tasks.MolecularVibrationsTask}}',
+                            '{{pynta.tasks.MolecularIRC}}']
+
+                if nameTask in nameTasks:
+                    opt_method = d['spec']['_tasks'][0]['opt_method'] if 'opt_method' in d['spec']['_tasks'][0] else None
+
+                    if self.software == "Espresso" or self.software == "PWDFT" :
+                        print(" Change: ",newdict['_tasks'][0]['software_kwargs']['command'], end='')
+                        node = MapTaskToNodes()
+                        newcommand = node.getCommand()
+                        newdict['_tasks'][0]['software_kwargs']['command'] = newcommand
+                        print(" by: ",newcommand)
+                    else:
+                        print(" Change: ",newdict['_tasks'][0]['software_kwargs']['fake'], end='')
+                        node = MapTaskToNodes()
+                        newcommand = node.getCommand()
+                        newdict['_tasks'][0]['software_kwargs']['fake'] = newcommand
+                        print(" by: ",newcommand)
+                # Here we work with reset the optmization task
+                # We load the trajectory file and save this structure in the
+                # tree of the task
+                if 'opt' in task_name:
+                    dirs = wf_launchers[task_name]
+                    if dirs != []:
+                        src = dirs[0]
+                        print('Name Task {0:^20s} {1:^12s} {2}'.format(task_name, task_state, src))
+                        file_traj = [name for name in os.listdir(src) if name.endswith(".traj")]
+                        file_traj = file_traj[0]
+                        base, ext = os.path.splitext(file_traj)
+
+                        with open (os.path.join(src, "FW.json")) as file:
+                            filejson = json.load(file)
+
+                        if opt_method == 'QuasiNewton':
+                            namexyz = f'weakopt_{base}.xyz'
+                        else:
+                            namexyz = f'{base}_init.xyz'
+
+                        atoms = read(os.path.join(src, file_traj), index=-1)
+                        dst = os.path.dirname(filejson['spec']['_tasks'][0]['xyz'])
+
+                        write(f'{src}/{namexyz}', atoms, format='xyz')
+
+                        copyDataAndSave(src, dst, namexyz)
+                        copyDataAndSave(src, dst, f'{base}.traj')
+
+                # Keep on with the task_state != COMPLETED
+                self.launchpad.rerun_fw(int(task_id))
+                self.launchpad.update_spec([int(task_id)], newdict)
+
+
+
+        self.launch()
 
 
     def execute_from_initial_ad_guesses(self):
